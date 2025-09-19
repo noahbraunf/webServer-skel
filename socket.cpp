@@ -123,7 +123,7 @@ Socket::~Socket() noexcept {
 
 std::optional<Socket> Socket::create(Socket::Type type) {
   try {
-    return Socket(type);
+    return std::optional<Socket>{Socket(type)};
   } catch (...) {
     return std::nullopt;
   }
