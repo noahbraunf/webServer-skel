@@ -12,6 +12,34 @@
 #include <unistd.h>
 
 namespace wnet {
+FileDescriptor::~FileDescriptor() {
+  if (isValid())
+    ::close(_fd);
+}
+
+FileDescriptor::FileDescriptor(FileDescriptor &&other) noexcept
+    : _fd(other._fd) {
+  other._fd = -1;
+}
+
+FileDescriptor &FileDescriptor::operator=(FileDescriptor &&other) noexcept {
+  if (this != &other) {
+    if (isValid()) {
+      ::close(_fd);
+    }
+    _fd = other._fd;
+    other._fd = -1;
+  }
+  return *this;
+}
+
+constexpr void FileDescriptor::reset(int fd) {
+  if (isValid()) {
+    ::close(_fd);
+  }
+  _fd = fd;
+}
+
 struct SocketAddr::Impl {
   sockaddr_in addr{};
 
@@ -115,6 +143,10 @@ Socket::Socket(Socket::Type type) : _impl(std::make_unique<Impl>(type)) {
   _impl->fd.reset(fd);
 }
 
+Socket::Socket(Socket &&other) noexcept
+    : _impl(other._impl.get()) Socket::Socket
+      & operator=(Socket && other) noexcept;
+
 Socket::~Socket() noexcept {
   if (_impl && _impl->fd.isValid()) {
     ::close(_impl->fd.get());
@@ -123,7 +155,7 @@ Socket::~Socket() noexcept {
 
 std::optional<Socket> Socket::create(Socket::Type type) {
   try {
-    return std::optional<Socket>{Socket(type)};
+    return std::optional<Socket>{type};
   } catch (...) {
     return std::nullopt;
   }

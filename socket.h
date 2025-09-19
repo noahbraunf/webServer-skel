@@ -40,13 +40,21 @@ public:
   constexpr FileDescriptor() noexcept = default;
   constexpr explicit FileDescriptor(int fd) noexcept : _fd(fd) {}
 
+  FileDescriptor(const FileDescriptor &) = delete;
+  FileDescriptor &operator=(const FileDescriptor &) = delete;
+
+  FileDescriptor(FileDescriptor &&other) noexcept;
+  FileDescriptor &operator=(FileDescriptor &&other) noexcept;
+
+  ~FileDescriptor();
+
   [[nodiscard]] constexpr int get() const noexcept { return _fd; }
   [[nodiscard]] constexpr int isValid() const noexcept { return _fd >= 0; }
   [[nodiscard]] constexpr explicit operator bool() const noexcept {
     return isValid();
   }
 
-  constexpr void reset(int fd = -1) { _fd = fd; }
+  constexpr void reset(int fd = -1);
 
 private:
   int _fd{-1};
