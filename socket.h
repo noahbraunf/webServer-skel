@@ -97,9 +97,7 @@ public:
     UDP, // TODO: add udp support (not needed for this lab)
   };
 
-  enum class State {
-    // TODO: figure out which states the socket can be in
-  };
+  enum class State { Listen, Bind, Recv, Accept };
 
   explicit Socket(Type type = Type::TCP);
   Socket(Socket &&other) noexcept = default;

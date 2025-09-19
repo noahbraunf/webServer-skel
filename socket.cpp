@@ -143,9 +143,6 @@ Socket::Socket(Socket::Type type) : _impl(std::make_unique<Impl>(type)) {
   _impl->fd.reset(fd);
 }
 
-// Socket::Socket(Socket &&other) noexcept : _impl(other._impl.get()) {}
-// Socket &Socket::operator=(Socket &&other) noexcept {}
-
 Socket::~Socket() noexcept {
   if (_impl && _impl->fd.isValid()) {
     ::close(_impl->fd.get());
@@ -179,5 +176,16 @@ bool Socket::bind(const SocketAddr &addr) {
 
   return true;
 }
+
+bool Socket::listen(int backlog) {
+  if (::listen(_impl->fd.get(), backlog) != 0) {
+    _impl->last_error = std::error_code(errno, std::system_category());
+    return false;
+  }
+  return true; // success
+}
+
+std::optional<std::pair<Socket, SocketAddr>> Socket::accept();
+bool Socket::connect(const SocketAddr &addr);
 
 } // namespace wnet
