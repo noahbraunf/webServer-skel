@@ -102,8 +102,8 @@ public:
   };
 
   explicit Socket(Type type = Type::TCP);
-  Socket(Socket &&other) noexcept;
-  Socket &operator=(Socket &&other) noexcept;
+  Socket(Socket &&other) noexcept = default;
+  Socket &operator=(Socket &&other) noexcept = default;
   ~Socket() noexcept;
 
   Socket(const Socket &) = delete;

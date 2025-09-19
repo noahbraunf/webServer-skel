@@ -143,9 +143,8 @@ Socket::Socket(Socket::Type type) : _impl(std::make_unique<Impl>(type)) {
   _impl->fd.reset(fd);
 }
 
-Socket::Socket(Socket &&other) noexcept
-    : _impl(other._impl.get()) Socket::Socket
-      & operator=(Socket && other) noexcept;
+// Socket::Socket(Socket &&other) noexcept : _impl(other._impl.get()) {}
+// Socket &Socket::operator=(Socket &&other) noexcept {}
 
 Socket::~Socket() noexcept {
   if (_impl && _impl->fd.isValid()) {
