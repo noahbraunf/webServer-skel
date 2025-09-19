@@ -9,15 +9,15 @@ USERNAME = noahbraunf
 
 CXX = g++
 LD = g++
-CXXFLAGS = -std=c++17 -g
-LDFLAGS = 
+CXXFLAGS = -std=c++20 -g -Wall -Wextra -Wpedantic
+LDFLAGS = -pthread
 
 #
 # You should be able to add object files here without changing anything else
 #
 TARGET = webServer
-OBJ_FILES = ${TARGET}.o
-INC_FILES = ${TARGET}.h
+INC_FILES = ${TARGET}.h socket.h
+OBJ_FILES = ${TARGET}.o socket.o
 
 #
 # Any libraries we might need.
@@ -44,3 +44,9 @@ submit:
 	mkdir ${USERNAME} 
 	cp Makefile README.txt *.h *.cpp ${USERNAME} 
 	tar zcf ${USERNAME}.tgz ${USERNAME} 
+
+debug: CXXFLAGS += -DDEBUG -fsanitize=address -fsanitize=undefined
+debug: LDFLAGS += -fsanitize=address -fsanitize=undefined
+debug: ${TARGET}
+
+.PHONY: all clean submit debug
