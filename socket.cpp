@@ -8,12 +8,13 @@
 #include <netinet/in.h>
 #include <stdexcept>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <system_error>
 #include <unistd.h>
 
 namespace wnet {
 FileDescriptor::~FileDescriptor() {
-  if (isValid())
+  if (is_valid())
     ::close(_fd);
 }
 
@@ -24,7 +25,7 @@ FileDescriptor::FileDescriptor(FileDescriptor &&other) noexcept
 
 FileDescriptor &FileDescriptor::operator=(FileDescriptor &&other) noexcept {
   if (this != &other) {
-    if (isValid()) {
+    if (is_valid()) {
       ::close(_fd);
     }
     _fd = other._fd;
@@ -34,7 +35,7 @@ FileDescriptor &FileDescriptor::operator=(FileDescriptor &&other) noexcept {
 }
 
 constexpr void FileDescriptor::reset(int fd) {
-  if (isValid()) {
+  if (is_valid()) {
     ::close(_fd);
   }
   _fd = fd;
@@ -98,7 +99,7 @@ bool SocketAddr::operator==(const SocketAddr &other) const noexcept {
          _impl->addr.sin_addr.s_addr == other._impl->addr.sin_addr.s_addr;
 }
 
-std::string SocketAddr::toString() const {
+std::string SocketAddr::to_string() const {
   return std::format("{}:{}", ip(), port());
 }
 
@@ -144,7 +145,7 @@ Socket::Socket(Socket::Type type) : _impl(std::make_unique<Impl>(type)) {
 }
 
 Socket::~Socket() noexcept {
-  if (_impl && _impl->fd.isValid()) {
+  if (_impl && _impl->fd.is_valid()) {
     ::close(_impl->fd.get());
   }
 }
@@ -157,8 +158,8 @@ std::optional<Socket> Socket::create(Socket::Type type) {
   }
 }
 
-std::optional<Socket> Socket::createBind(const SocketAddr &addr,
-                                         Socket::Type type) {
+std::optional<Socket> Socket::create_bind(const SocketAddr &addr,
+                                          Socket::Type type) {
   auto s = create(type);
   if (!s)
     return std::nullopt;
@@ -173,19 +174,79 @@ bool Socket::bind(const SocketAddr &addr) {
     _impl->last_error = std::error_code(errno, std::system_category());
     return false;
   }
-
+  _impl->state = State::Bind;
   return true;
 }
 
 bool Socket::listen(int backlog) {
+  if (_impl->type != Type::TCP) { // connection must be TCP
+    _impl->last_error = std::error_code(EOPNOTSUPP, std::system_category());
+    return false;
+  }
+
   if (::listen(_impl->fd.get(), backlog) != 0) {
     _impl->last_error = std::error_code(errno, std::system_category());
     return false;
   }
+
+  _impl->state = State::Listen;
   return true; // success
 }
 
-std::optional<std::pair<Socket, SocketAddr>> Socket::accept();
-bool Socket::connect(const SocketAddr &addr);
+std::optional<std::pair<Socket, SocketAddr>> Socket::accept() {
+  if (_impl->state != State::Listen) {
+    _impl->last_error = std::error_code(EINVAL, std::system_category());
+    return std::nullopt;
+  }
 
+  sockaddr_in client_addr{};
+  socklen_t client_len = sizeof(client_addr);
+
+  int cfd = ::accept(_impl->fd.get(),
+                     reinterpret_cast<sockaddr *>(&client_addr), &client_len);
+
+  if (cfd < 0) {
+    _impl->last_error = std::error_code(errno, std::system_category());
+    return std::nullopt;
+  }
+
+  Socket client(_impl->type);
+  client._impl->fd.reset(cfd);
+  client._impl->state = State::Connect;
+
+  SocketAddr addr;
+  addr._impl->addr = client_addr;
+
+  auto pair =
+      std::make_pair<Socket, SocketAddr>(std::move(client), std::move(addr));
+  return pair;
+}
+
+bool Socket::connect(const SocketAddr &addr) {
+  int result = ::connect(_impl->fd.get(), addr.asCType(), addr.size());
+
+  if (result < 0) {
+    _impl->last_error = std::error_code(errno, std::system_category());
+    return false;
+  }
+
+  _impl->state = State::Connect;
+  return true;
+}
+
+std::optional<std::size_t> Socket::send(std::span<const std::byte> data) {
+  ssize_t sent =
+      ::send(_impl->fd.get(), data.data(), data.size(), MSG_NOSIGNAL);
+  if (sent < 0) {
+    _impl->last_error = std::error_code(errno, std::system_category());
+    return std::nullopt;
+  }
+
+  return static_cast<std::size_t>(sent);
+}
+
+std::optional<std::size_t> Socket::send(std::string_view data) {
+  return send(
+      std::span{reinterpret_cast<const std::byte *>(data.data()), data.size()});
+}
 } // namespace wnet
