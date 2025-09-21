@@ -63,6 +63,33 @@ SocketAddr::SocketAddr(std::string_view ip, uint16_t port)
   }
 }
 
+SocketAddr::SocketAddr(const SocketAddr &other)
+    : _impl(other._impl ? std::make_unique<Impl>(*other._impl) : nullptr) {}
+
+SocketAddr::SocketAddr(SocketAddr &&other) noexcept
+    : _impl(std::move(other._impl)) {}
+
+SocketAddr &SocketAddr::operator=(const SocketAddr &other) {
+  if (this != &other) {
+    if (other._impl) {
+      _impl = std::make_unique<Impl>(*other._impl);
+    } else {
+      _impl.reset();
+    }
+  }
+  return *this;
+}
+
+SocketAddr &SocketAddr::operator=(SocketAddr &&other) noexcept {
+  if (this != &other) {
+    _impl = std::move(other._impl);
+  }
+
+  return *this;
+}
+
+SocketAddr::~SocketAddr() noexcept {}
+
 const sockaddr *SocketAddr::asCType() const noexcept {
   return reinterpret_cast<const sockaddr *>(&_impl->addr);
 }
