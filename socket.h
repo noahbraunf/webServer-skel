@@ -157,9 +157,14 @@ public:
   [[nodiscard]] std::optional<std::size_t>
   send_to(std::span<const std::byte> data, const SocketAddr &addr);
 
-  [[nodiscard]] std::optional<std::size_t>
-  recv(std::span<const std::byte> buffer);
-  [[nodiscard]] std::optional<std::size_t> recv(std::string_view data);
+  [[nodiscard]] std::optional<std::size_t> recv(std::span<std::byte> buffer);
+  [[nodiscard]] std::optional<std::size_t> recv(std::span<char> buffer);
+  [[nodiscard]] std::optional<std::string>
+  recv_string(std::size_t max_length = 4096);
+  [[nodiscard]] std::optional<std::string>
+  recv_line(std::size_t max_length = 4096);
+  [[nodiscard]] std::optional<std::string>
+  recv_until(std::string_view delim, std::size_t max_length = 4096);
   [[nodiscard]] std::optional<std::pair<std::size_t, SocketAddr>>
   recv_from(std::span<std::byte> buffer);
 

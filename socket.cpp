@@ -6,6 +6,8 @@
 #include <format>
 #include <memory>
 #include <netinet/in.h>
+#include <optional>
+#include <span>
 #include <stdexcept>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -105,15 +107,16 @@ uint16_t SocketAddr::port() const noexcept {
 }
 
 std::string SocketAddr::ip() const {
-  char buf[INET_ADDRSTRLEN];
-  if (inet_ntop(AF_INET, &_impl->addr.sin_addr, buf, sizeof(buf)) == NULL) {
+  std::array<char, INET_ADDRSTRLEN> buf;
+  if (inet_ntop(AF_INET, &_impl->addr.sin_addr, buf.data(), sizeof(buf)) ==
+      NULL) {
     // EAFNOSUPPORT cannot happen because AF_INET is always supported
     throw new std::length_error(
         std::format("Buffer is too small (something is really wrong because "
                     "INET_ADDRSTRLEN is incorrect). INET_ADDRSTRLEN: {}",
                     INET_ADDRSTRLEN));
   }
-  return buf;
+  return std::string(buf.data(), buf.size());
 }
 
 uint32_t SocketAddr::ipValue() const noexcept {
@@ -276,4 +279,133 @@ std::optional<std::size_t> Socket::send(std::string_view data) {
   return send(
       std::span{reinterpret_cast<const std::byte *>(data.data()), data.size()});
 }
+
+std::optional<std::size_t> Socket::recv(std::span<std::byte> buffer) {
+  ssize_t received = ::recv(_impl->fd.get(), buffer.data(), buffer.size(), 0);
+  if (received < 0) {
+    _impl->last_error = std::error_code(errno, std::system_category());
+    return std::nullopt;
+  }
+
+  return static_cast<std::size_t>(received);
+}
+
+std::optional<std::size_t> Socket::recv(std::span<char> buf) {
+  return Socket::recv(std::as_writable_bytes(buf));
+}
+
+std::optional<std::string> Socket::recv_string(std::size_t max_length) {
+  std::string buf(max_length, '\0');
+  ssize_t received = ::recv(_impl->fd.get(), buf.data(), max_length, 0);
+  if (received < 0) {
+    _impl->last_error = std::error_code(errno, std::system_category());
+    return std::nullopt;
+  }
+
+  buf.resize(received);
+  return buf;
+}
+
+std::optional<std::string> Socket::recv_line(std::size_t max_length) {
+  std::string result;
+  result.reserve(max_length);
+
+  for (std::size_t i = 0; i < max_length; ++i) {
+    char cur;
+    ssize_t received = ::recv(_impl->fd.get(), &cur, 1, 0);
+    if (received < 0) {
+      _impl->last_error = std::error_code(errno, std::system_category());
+      return std::nullopt;
+    }
+
+    if (received == 0) { // no more bytes sent
+      break;
+    }
+
+    result += cur;
+
+    if (cur == '\n') {
+      break;
+    }
+  }
+
+  return result;
+}
+
+[[nodiscard]] std::optional<std::string>
+Socket::recv_until(std::string_view delim, std::size_t max_length) {
+  std::string result;
+  result.reserve(max_length);
+
+  for (std::size_t i = 0; i < max_length; ++i) {
+    char cur;
+    ssize_t received = ::recv(_impl->fd.get(), &cur, 1, 0);
+    if (received < 0) {
+      _impl->last_error = std::error_code(errno, std::system_category());
+      return std::nullopt;
+    }
+
+    if (received == 0) { // no more bytes sent
+      break;
+    }
+
+    result += cur;
+
+    if (result.size() >= delim.size() &&
+        result.substr(result.size() - delim.size()) == delim) {
+      break;
+    }
+  }
+
+  return result;
+}
+
+std::optional<std::pair<std::size_t, SocketAddr>>
+Socket::recv_from(std::span<std::byte> buf) {
+  SocketAddr fromaddr;
+  socklen_t fromsize = fromaddr.size();
+
+  ssize_t received = ::recvfrom(_impl->fd.get(), buf.data(), buf.size(), 0,
+                                fromaddr.asCType(), &fromsize);
+
+  if (received < 0) {
+    _impl->last_error = std::error_code(errno, std::system_category());
+    return std::nullopt;
+  }
+
+  SocketAddr addr(fromaddr);
+  return std::make_pair(static_cast<std::size_t>(received), std::move(addr));
+}
+
+void Socket::close() noexcept {
+  if (_impl && _impl->fd.is_valid()) {
+    ::close(_impl->fd.get());
+    _impl->fd.reset(-1);
+    _impl->state = State::Close;
+  }
+}
+
+std::error_code Socket::shutdown(bool read, bool write) {
+  if (!_impl || !_impl->fd.is_valid()) {
+    return std::error_code(EBADF, std::system_category());
+  }
+
+  int how = 0;
+  if (read && write) {
+    how = SHUT_RDWR;
+  } else if (read) {
+    how = SHUT_RD;
+  } else if (write) {
+    how = SHUT_WR;
+  } else {
+    return std::error_code(EINVAL, std::system_category());
+  }
+
+  if (::shutdown(_impl->fd.get(), how) != 0) {
+    return std::error_code(errno, std::system_category());
+  }
+
+  return std::error_code{};
+}
+
 } // namespace wnet
